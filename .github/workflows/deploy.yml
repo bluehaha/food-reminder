@@ -70,14 +70,14 @@ jobs:
             cd ${{ secrets.VM_DEPLOY_PATH || '/home/ubuntu/food-reminder' }}
 
             # Login to GitHub Container Registry
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull the latest image
-            docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
+            sudo docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
 
             # Stop and remove existing container
-            docker stop food-reminder || true
-            docker rm food-reminder || true
+            sudo docker stop food-reminder || true
+            sudo docker rm food-reminder || true
 
             # Clean up old images
-            docker image prune -af --filter "until=72h"
+            sudo docker image prune -af --filter "until=72h"
