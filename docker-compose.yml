@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  food-reminder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: food-reminder:latest
+    container_name: food-reminder
+    volumes:
+      # Mount config file
+      - ./conf/config.yaml:/app/conf/config.yaml:ro
+      # Mount state directory to persist notification state
+      - ./state:/app/state
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Taipei
+    restart: no
+    # Optional: Add cron schedule using healthcheck or external scheduler
+    # For periodic checks, consider using a cron job on the host or Kubernetes CronJob

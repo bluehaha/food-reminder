@@ -1,0 +1,25 @@
+# Product URLs to monitor
+products:
+  - url: "https://www.wagashi.com.tw/product/%e8%8d%89%e8%8e%93%e5%a4%a7%e7%a6%8f/"
+    name: "Strawberry Daifuku 8-pack"
+
+  - url: "https://www.wagashi.com.tw/product/%e6%a0%97%e5%ad%90%e9%a5%85%e9%a0%ad/"
+    name: "Chestnut Manju 5-pack"
+
+# Slack notification settings
+slack:
+  webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+  username: "Food Availability Bot"
+  icon_emoji: ":bento:"
+
+# State management
+state:
+  file_path: "state/notifications.json"
+
+# HTTP settings
+timeout: 30
+user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
+# Retry settings
+max_retries: 3
+retry_delay: 2
