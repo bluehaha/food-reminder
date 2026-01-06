@@ -67,7 +67,7 @@ jobs:
           port: ${{ secrets.VM_SSH_PORT || 22 }}
           script: |
             # Navigate to deployment directory
-            cd ${{ secrets.VM_DEPLOY_PATH || '/opt/food-reminder' }}
+            cd ${{ secrets.VM_DEPLOY_PATH || '/home/ubuntu/food-reminder' }}
 
             # Login to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
