@@ -55,6 +55,7 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    environment: main
 
     steps:
       - name: Deploy to VM
