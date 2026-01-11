@@ -1,5 +1,6 @@
 # Food Reminder
 
+
 Monitor food product availability on wagashi.com.tw and receive Slack notifications when items become available.
 
 ## Features
