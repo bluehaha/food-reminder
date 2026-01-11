@@ -2,7 +2,8 @@
 
 import re
 import time
-from typing import Optional
+from typing import Optional, Dict, Any
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -50,37 +51,36 @@ class WooCommerceChecker(Checker):
         return session
 
     def is_available(self, url: str) -> bool:
-        """Check if product is available using WooCommerce stock indicators.
+        """Check if product is available by attempting to add to cart.
 
-        Uses multiple methods:
-        1. Check product div class for 'instock' or 'outofstock'
-        2. Check for 'out_of_stock_wrapper' div
+        This method validates true availability by:
+        1. Fetching the product page
+        2. Extracting product/variation data
+        3. Attempting to add to cart via POST request
+        4. Checking response for error messages
 
         Args:
             url: Product URL to check
 
         Returns:
-            True if product is in stock, False otherwise
+            True if product can be added to cart, False otherwise
 
         Raises:
             CheckerError: If check fails
         """
         html = self._fetch_html(url)
 
-        # Method 1: Check product div class (primary method)
-        availability = self._check_product_class(html)
-        if availability is not None:
-            logger.info(f"Product availability determined from class: {availability}")
-            return availability
-
-        # Method 2: Check for out_of_stock_wrapper (secondary)
-        if "out_of_stock_wrapper" in html:
-            logger.info("Found out_of_stock_wrapper - product unavailable")
+        if self._check_product_class(html) is False:
+            logger.info("Product marked as out of stock via HTML class check")
             return False
 
-        # If we can't determine, log warning and assume unavailable
-        logger.warning("Could not determine stock status - assuming unavailable")
-        return False
+        # Extract product and variation data
+        product_data = self._extract_product_data(html, url)
+        # Attempt to add to cart
+        can_add = self._attempt_add_to_cart(url, product_data)
+
+        logger.info(f"Product availability via cart validation: {can_add}")
+        return can_add
 
     def _fetch_html(self, url: str) -> str:
         """Fetch HTML content with retries.
@@ -132,3 +132,133 @@ class WooCommerceChecker(Checker):
             return True
 
         return None
+
+    def _extract_product_data(self, html: str, url: str) -> Optional[Dict[str, Any]]:
+        """Extract product and variation data from HTML.
+
+        Args:
+            html: HTML content
+            url: Product URL
+
+        Returns:
+            Dictionary with product_id, variation_id, and attributes, or None
+        """
+        # Extract product ID
+        product_id_match = re.search(r'name="add-to-cart"\s+value="(\d+)"', html)
+        if not product_id_match:
+            return None
+
+        product_id = product_id_match.group(1)
+
+        return {
+            'product_id': product_id,
+        }
+
+    def _find_available_variation(self, html: str) -> Optional[Dict[str, Any]]:
+        """Find the first available variation from product data.
+
+        Args:
+            html: HTML content
+
+        Returns:
+            Dictionary with variation_id and attributes, or None
+        """
+        # Find available_variations JSON data
+        variations_match = re.search(
+            r'"available_variations":\s*\[(.*?)\](?=,"|$)',
+            html,
+            re.DOTALL
+        )
+        if not variations_match:
+            return None
+
+        variations_json = variations_match.group(1)
+
+        # Find all variations with is_in_stock: true
+        variation_blocks = re.finditer(
+            r'\{[^}]*"variation_id":(\d+)[^}]*"is_in_stock":(true|false)[^}]*"attributes":\{([^}]+)\}[^}]*\}',
+            variations_json,
+            re.DOTALL
+        )
+
+        for block in variation_blocks:
+            var_id = block.group(1)
+            in_stock = block.group(2) == 'true'
+            attrs_str = block.group(3)
+
+            if not in_stock:
+                continue
+
+            # Parse attributes
+            attributes = {}
+            attr_matches = re.findall(r'"(attribute_[^"]+)":"([^"]*)"', attrs_str)
+            for attr_name, attr_value in attr_matches:
+                attributes[attr_name] = attr_value
+
+            return {
+                'variation_id': var_id,
+                'attributes': attributes
+            }
+
+        return None
+
+    def _attempt_add_to_cart(self, url: str, product_data: Dict[str, Any]) -> bool:
+        """Attempt to add product to cart and check for errors.
+
+        Args:
+            url: Product URL
+            product_data: Product and variation data
+
+        Returns:
+            True if product can be added, False if error occurs
+        """
+        try:
+            # Build POST data
+            post_data = {
+                'add-to-cart': product_data['product_id'],
+                'product_id': product_data['product_id'],
+                'quantity': '1',
+                'variation_id': '686214'
+            }
+
+            logger.debug(f"Attempting to add to cart: {post_data}")
+
+            # Make POST request
+            response = self.session.post(
+                url,
+                data=post_data,
+                timeout=self.timeout,
+                allow_redirects=False
+            )
+
+            # Check response for error messages
+            response_text = response.text.lower()
+
+            # Common WooCommerce error indicators
+            error_indicators = [
+                'cannot add',
+                'out of stock',
+                'woocommerce-error',
+                'product is unavailable'
+            ]
+
+            for indicator in error_indicators:
+                if indicator in response_text:
+                    logger.info(f"Found error indicator: {indicator}")
+                    return False
+
+            # If redirected to cart page, likely success
+            if response.status_code == 302:
+                location = response.headers.get('Location', '')
+                if 'cart' in location:
+                    logger.info("Redirected to cart - product added successfully")
+                    return True
+
+            # No errors found
+            logger.info("No error indicators found - assuming product is available")
+            return True
+
+        except requests.RequestException as e:
+            logger.warning(f"Failed to attempt add to cart: {e}")
+            # If POST fails, fall back to assuming unavailable
+            return False

@@ -56,7 +56,16 @@ class TestWooCommerceChecker:
     ) -> None:
         """Test is_available with in-stock product."""
         url = "https://www.wagashi.com.tw/product/test/"
-        responses.add(responses.GET, url, body=in_stock_html, status=200)
+
+        # Add product ID to HTML fixture
+        html_with_product = in_stock_html.replace(
+            '<div id="product-',
+            '<form class="cart"><input type="hidden" name="add-to-cart" value="3316" /></form><div id="product-'
+        )
+
+        responses.add(responses.GET, url, body=html_with_product, status=200)
+        # Mock the POST request for add-to-cart
+        responses.add(responses.POST, url, body="<html>Success</html>", status=200)
 
         result = checker.is_available(url)
         assert result is True
@@ -67,7 +76,17 @@ class TestWooCommerceChecker:
     ) -> None:
         """Test is_available with out-of-stock product."""
         url = "https://www.wagashi.com.tw/product/test/"
-        responses.add(responses.GET, url, body=out_of_stock_html, status=200)
+
+        # Add product ID to HTML fixture
+        html_with_product = out_of_stock_html.replace(
+            '<div id="product-',
+            '<form class="cart"><input type="hidden" name="add-to-cart" value="2909" /></form><div id="product-'
+        )
+
+        responses.add(responses.GET, url, body=html_with_product, status=200)
+        # Mock POST request that returns error
+        error_response = '<div class="woocommerce-error">You cannot add to cart because the product is out of stock</div>'
+        responses.add(responses.POST, url, body=error_response, status=200)
 
         result = checker.is_available(url)
         assert result is False
