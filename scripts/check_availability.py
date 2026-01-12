@@ -3,6 +3,7 @@
 
 import argparse
 import sys
+import logging
 from pathlib import Path
 
 # Add parent directory to path to import from src
@@ -14,7 +15,7 @@ from src.core.notifier import SlackNotifier
 from src.core.service import MonitoringService
 from src.core.state import JsonStateStore
 from src.utils.exceptions import FoodReminderError
-from src.utils.logger import get_logger
+from src.utils.logger import configure_logging, get_logger
 
 
 def main() -> None:
@@ -37,9 +38,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Setup logging
+    # Setup logging level for entire application
     log_level = "DEBUG" if args.verbose else "INFO"
-    logger = get_logger(__name__, log_level)
+    configure_logging(level=log_level)
+
+    logger = get_logger(__name__)
 
     try:
         # Load configuration
