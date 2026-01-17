@@ -1,0 +1,67 @@
+# Purchase automation configuration example
+# Copy this file to purchase.yaml and fill in your details
+
+base_url: https://www.wagashi.com.tw
+
+# Product configuration
+product:
+  url: "product/草莓大福/"  # Product slug or full URL
+  product_id: 2909
+  variation_id: 686214
+  quantity: 1
+  attributes:
+    盒數: "5盒"
+
+# Billing information
+billing_info:
+  first_name: "Your First Name"
+  last_name: "Your Last Name"
+  company: ""
+  country: "TW"
+  address_1: "none"
+  city: "none"
+  postcode: "none"
+  phone: "0912345678"
+  email: "your.email@example.com"
+  carruer_type: 1  # 1: 會員載具, 2: 手機條碼, 3: 自然人憑證
+  invoice_type: "p"  # p: 個人, c: 公司
+  customer_identifier: ""
+  love_code: ""
+  carruer_num: ""
+
+# Shipping information
+shipping_info:
+  first_name: ""
+  last_name: ""
+  company: ""
+  country: "TW"
+  address_1: ""
+  address_2: ""
+  city: ""
+  state: ""
+  postcode: ""
+  phone: ""
+  method: "local_pickup:8"  # Shipping method
+  delivery_date: "2026-01-15"  # Format: YYYY-MM-DD
+
+# Payment information
+payment_info:
+  method: "sinopac-self-hosted-credit"
+  card_number: "1234 5678 1111 2222"
+  expiry_month: "01"
+  expiry_year: "30"
+  cvv: "123"
+
+# HTTP settings
+timeout: 30
+user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0"
+
+# Slack notification settings
+slack:
+  webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+  username: "Food Availability Bot"
+  icon_emoji: ":bento:"
+
+# State management
+state:
+  file_path: "state/notifications.json"

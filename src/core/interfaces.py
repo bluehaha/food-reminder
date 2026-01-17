@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class Checker(ABC):
@@ -72,5 +72,53 @@ class StateStore(ABC):
 
         Args:
             product_url: Product URL
+        """
+        pass
+
+
+class Purchaser(ABC):
+    """Interface for automating product purchases."""
+
+    @abstractmethod
+    def add_to_cart(
+        self,
+        product_url: str,
+        product_id: int,
+        variation_id: int,
+        quantity: int = 1,
+        attributes: Optional[Dict[str, str]] = None
+    ) -> bool:
+        """Add product to cart.
+
+        Args:
+            product_url: Product URL or slug (e.g., "product/草莓大福/" or full URL)
+            product_id: Product ID
+            variation_id: Variation ID
+            quantity: Quantity to add
+            attributes: Product attributes (e.g., {"盒數": "5盒"})
+
+        Returns:
+            True if successfully added to cart
+
+        Raises:
+            PurchaseError: If add to cart fails
+        """
+        pass
+
+    @abstractmethod
+    def checkout(self, billing_info: Dict[str, Any], shipping_info: Dict[str, Any],
+                 payment_info: Dict[str, Any]) -> str:
+        """Complete checkout process.
+
+        Args:
+            billing_info: Billing information
+            shipping_info: Shipping information
+            payment_info: Payment information
+
+        Returns:
+            Order ID or confirmation number
+
+        Raises:
+            PurchaseError: If checkout fails
         """
         pass

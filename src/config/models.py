@@ -1,7 +1,7 @@
 """Configuration models using Pydantic."""
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -66,3 +66,75 @@ class Config(BaseModel):
     retry_delay: int = Field(default=2, description="Delay between retries in seconds")
 
     model_config = {"validate_assignment": True}
+
+
+class PurchaseProductConfig(BaseModel):
+    """Configuration for a product to purchase."""
+
+    url: str  # Product URL (e.g., "product/草莓大福/" or full URL)
+    product_id: int
+    variation_id: int
+    quantity: int = 1
+    attributes: Optional[Dict[str, str]] = None
+
+
+class BillingInfoConfig(BaseModel):
+    """Billing information configuration."""
+
+    first_name: str
+    last_name: str
+    company: str = ""
+    country: str = "TW"
+    address_1: str = "none"
+    city: str = "none"
+    postcode: str = "none"
+    phone: str = ""
+    email: str = ""
+    carruer_type: int = 1
+    invoice_type: str = "p"
+    customer_identifier: str = ""
+    love_code: str = ""
+    carruer_num: str = ""
+
+
+class ShippingInfoConfig(BaseModel):
+    """Shipping information configuration."""
+
+    first_name: str = ""
+    last_name: str = ""
+    company: str = ""
+    country: str = "TW"
+    address_1: str = ""
+    address_2: str = ""
+    city: str = ""
+    state: str = ""
+    postcode: str = ""
+    phone: str = ""
+    method: str = "local_pickup:8"
+
+
+class PaymentInfoConfig(BaseModel):
+    """Payment information configuration."""
+
+    method: str = "sinopac-self-hosted-credit"
+    card_number: str = ""
+    expiry_month: str = ""
+    expiry_year: str = ""
+    cvv: str = ""
+
+
+class PurchaseConfig(BaseModel):
+    """Purchase automation configuration."""
+
+    base_url: HttpUrl
+    product: PurchaseProductConfig
+    billing_info: BillingInfoConfig
+    shipping_info: ShippingInfoConfig
+    payment_info: PaymentInfoConfig
+    slack: SlackConfig
+    state: StateConfig = Field(default_factory=StateConfig)
+    timeout: int = Field(default=30, description="Request timeout in seconds")
+    user_agent: str = Field(
+        default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0",
+        description="User agent for HTTP requests",
+    )

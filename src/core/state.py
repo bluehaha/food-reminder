@@ -90,3 +90,86 @@ class JsonStateStore(StateStore):
             del state[product_url]
             self._write_state(state)
             logger.info(f"Cleared notification record for {product_url}")
+
+    def has_purchased(self, product_id: int, variation_id: int) -> bool:
+        """Check if product variation has been purchased.
+
+        Args:
+            product_id: Product ID
+            variation_id: Variation ID
+
+        Returns:
+            True if already purchased, False otherwise
+        """
+        state = self._read_state()
+        key = f"{product_id}_{variation_id}"
+
+        if key in state:
+            purchase_info = state[key]
+            if isinstance(purchase_info, dict):
+                logger.info(
+                    f"Product {product_id} variation {variation_id} was already purchased. "
+                    f"Order ID: {purchase_info.get('order_id')}, "
+                    f"Time: {purchase_info.get('timestamp')}"
+                )
+                return True
+
+        return False
+
+    def mark_purchased(
+        self,
+        product_id: int,
+        variation_id: int,
+        order_id: str,
+    ) -> None:
+        """Mark product variation as purchased.
+
+        Args:
+            product_id: Product ID
+            variation_id: Variation ID
+            order_id: Order ID from successful purchase
+        """
+        state = self._read_state()
+        key = f"{product_id}_{variation_id}"
+
+        state[key] = {
+            "order_id": order_id,
+            "timestamp": datetime.now().isoformat(),
+            "product_id": product_id,
+            "variation_id": variation_id,
+        }
+
+        self._write_state(state)
+        logger.info(
+            f"Marked product {product_id} variation {variation_id} as purchased. "
+            f"Order ID: {order_id}"
+        )
+
+    def clear_purchase(self, product_id: int, variation_id: int) -> None:
+        """Clear purchase record for a product variation.
+
+        Args:
+            product_id: Product ID
+            variation_id: Variation ID
+        """
+        state = self._read_state()
+        key = f"{product_id}_{variation_id}"
+
+        if key in state:
+            del state[key]
+            self._write_state(state)
+            logger.info(f"Cleared purchase record for product {product_id} variation {variation_id}")
+
+    def get_purchase_info(self, product_id: int, variation_id: int) -> Optional[Dict]:
+        """Get purchase information for a product variation.
+
+        Args:
+            product_id: Product ID
+            variation_id: Variation ID
+
+        Returns:
+            Purchase info dictionary if found, None otherwise
+        """
+        state = self._read_state()
+        key = f"{product_id}_{variation_id}"
+        return state.get(key) if isinstance(state.get(key), dict) else None

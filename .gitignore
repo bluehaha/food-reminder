@@ -33,6 +33,7 @@ env/
 *.swp
 *.swo
 *~
+.venv
 
 # Testing
 .pytest_cache/
@@ -44,6 +45,7 @@ htmlcov/
 
 # Configuration and state (sensitive data)
 conf/config.yaml
+conf/purchase.yaml
 state/
 
 # OS

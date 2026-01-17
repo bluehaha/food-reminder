@@ -29,3 +29,9 @@ class StateError(FoodReminderError):
     """State management errors."""
 
     pass
+
+
+class PurchaseError(FoodReminderError):
+    """Product purchase errors."""
+
+    pass

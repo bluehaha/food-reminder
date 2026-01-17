@@ -1,12 +1,12 @@
 # Food Reminder
 
-
 Monitor food product availability on wagashi.com.tw and receive Slack notifications when items become available.
 
 ## Features
 
 - Monitor multiple product URLs
 - Slack notifications when products become available
+- **Automated product purchasing** (new!)
 - State management to avoid duplicate notifications
 - Automatic retry with exponential backoff
 - Comprehensive error handling and logging
@@ -44,7 +44,7 @@ cp conf/config.example.yaml conf/config.yaml
 poetry run python scripts/check_availability.py
 ```
 
-### Options
+#### Options
 
 ```bash
 # Use custom config file
@@ -56,6 +56,32 @@ poetry run python scripts/check_availability.py -v
 # Clear notification state for a product
 poetry run python scripts/check_availability.py --clear-state "https://www.wagashi.com.tw/product/example/"
 ```
+
+### Automate Product Purchasing
+
+```bash
+# Setup purchase configuration
+cp conf/purchase.yaml.example conf/purchase.yaml
+# Edit conf/purchase.yaml with your details
+
+# Run purchase automation
+poetry run python scripts/purchase_product.py -c conf/purchase.yaml
+```
+
+#### Purchase Options
+
+```bash
+# Dry run (add to cart without checkout)
+poetry run python scripts/purchase_product.py --dry-run
+
+# Clear cart before adding products
+poetry run python scripts/purchase_product.py --clear-cart
+
+# Verbose logging
+poetry run python scripts/purchase_product.py -v
+```
+
+See [PURCHASE_AUTOMATION.md](docs/PURCHASE_AUTOMATION.md) for detailed documentation.
 
 ### Using Makefile
 
@@ -101,6 +127,7 @@ slack:
 The project follows SOLID principles with clear separation of concerns:
 
 - **Checker**: Checks product availability (WooCommerce-specific logic)
+- **Purchaser**: Automates product purchasing (new!)
 - **Notifier**: Sends Slack notifications
 - **StateStore**: Manages notification state (JSON file)
 - **MonitoringService**: Orchestrates the check-notify workflow
@@ -130,14 +157,18 @@ food-reminder/
 │   ├── core/              # Business logic
 │   │   ├── interfaces.py  # Abstract interfaces
 │   │   ├── checker.py     # Product availability checker
+│   │   ├── purchaser.py   # Product purchaser
 │   │   ├── notifier.py    # Slack notifier
 │   │   ├── state.py       # State management
 │   │   └── service.py     # Orchestration service
 │   ├── config/            # Configuration management
 │   ├── utils/             # Utilities (logging, exceptions)
 ├── scripts/               # CLI entry points
+│   ├── check_availability.py
+│   └── purchase_product.py
 ├── tests/                 # Unit and integration tests
 ├── conf/                  # Configuration files
+├── docs/                  # Documentation
 └── state/                 # Runtime state (git-ignored)
 ```
 
