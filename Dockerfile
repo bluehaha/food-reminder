@@ -34,5 +34,6 @@ RUN mkdir -p state
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# Run the application
-CMD ["python", "scripts/check_availability.py", "-c", "conf/config.yaml"]
+# Default entrypoint - can be overridden at runtime
+ENTRYPOINT ["python"]
+CMD ["scripts/check_availability.py", "-c", "conf/config.yaml"]
