@@ -18,7 +18,7 @@ class WooCommercePurchaser(Purchaser):
     def __init__(
         self,
         base_url: str,
-        timeout: int = 30,
+        timeout: int = 120,
         user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0",
     ):
         """Initialize purchaser.
