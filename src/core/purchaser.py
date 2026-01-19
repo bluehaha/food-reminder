@@ -1,11 +1,11 @@
 """WooCommerce product purchaser implementation."""
 
 import re
-import time
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 from urllib.parse import urlencode
 import requests
+from requests.models import Response
 
 from src.core.interfaces import Purchaser
 from src.utils.exceptions import PurchaseError
@@ -91,14 +91,14 @@ class WooCommercePurchaser(Purchaser):
 
             # Use form-encoded POST (WooCommerce accepts both multipart and form-encoded)
             # Note: Browser typically uses multipart/form-data, but form-encoded should work
-            response = self.session.post(
-                full_url,
+
+            response = self._retry_request(
+                'POST',
+                url=full_url,
                 data=form_data,
                 timeout=self.timeout,
                 allow_redirects=True,
             )
-
-            response.raise_for_status()
 
             # Check for error messages in response
             response_lower = response.text.lower()
@@ -139,11 +139,11 @@ class WooCommercePurchaser(Purchaser):
             # Step 1: Visit checkout page to establish session and get update_order_review_nonce
             self.logger.debug("Visiting checkout page to establish session")
             checkout_page_url = f"{self.base_url}/checkout/"
-            checkout_page = self.session.get(
-                checkout_page_url,
+            checkout_page = self._retry_request(
+                'GET',
+                url=checkout_page_url,
                 timeout=self.timeout,
             )
-            checkout_page.raise_for_status()
 
             # Extract update_order_review_nonce from wc_checkout_params
             update_nonce = self._extract_update_order_review_nonce(checkout_page.text)
@@ -168,8 +168,9 @@ class WooCommercePurchaser(Purchaser):
                 "shipping_method[0]": shipping_info.get("method", "local_pickup:8"),
             }
 
-            update_review_response = self.session.post(
-                f"{self.base_url}/?wc-ajax=update_order_review",
+            update_review_response = self._retry_request(
+                'POST',
+                url=f"{self.base_url}/?wc-ajax=update_order_review",
                 data=urlencode(update_review_data),
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -192,8 +193,9 @@ class WooCommercePurchaser(Purchaser):
 
             self.logger.debug("Submitting final checkout")
             checkout_url = f"{self.base_url}/?wc-ajax=checkout"
-            response = self.session.post(
-                checkout_url,
+            response = self._retry_request(
+                'POST',
+                url=checkout_url,
                 data=urlencode(checkout_data_for_review),
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -416,8 +418,9 @@ class WooCommercePurchaser(Purchaser):
             }
 
             # Call the API
-            response = self.session.post(
-                f"{self.base_url}/?wc-ajax=orddd_update_delivery_session",
+            response = self._retry_request(
+                'POST',
+                url=f"{self.base_url}/?wc-ajax=orddd_update_delivery_session",
                 data=urlencode(request_data, doseq=True),
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -444,3 +447,41 @@ class WooCommercePurchaser(Purchaser):
             raise PurchaseError(f"Failed to fetch delivery dates: {e}") from e
         except Exception as e:
             raise PurchaseError(f"Failed to parse delivery dates: {e}") from e
+
+    def _retry_request(self, method: str, **kwargs) -> Response:
+        """Retry a request with multiple attempts.
+
+        Args:
+            method: HTTP method function (e.g., session.get, session.post)
+            **kwargs: Arguments to pass to the method
+
+        Returns:
+            Response object
+
+        Raises:
+            requests.RequestException: If all attempts fail
+        """
+        logger = get_logger(__name__)
+        max_attempts = 60
+        attempt = 1
+
+        while attempt <= max_attempts:
+            try:
+                match method:
+                    case 'GET':
+                        resp = self.session.get(**kwargs)
+                    case 'POST':
+                        resp = self.session.post(**kwargs)
+                    case _:
+                        raise ValueError(f"Unsupported method: {method}")
+
+                resp.raise_for_status()
+
+                return resp
+            except requests.RequestException as e:
+                if attempt == max_attempts:
+                    logger.error(f"Request failed after {max_attempts} attempts: {e}")
+                    raise
+
+                logger.warning(f"Request attempt {attempt}/{max_attempts} failed: {e}.")
+                attempt += 1
