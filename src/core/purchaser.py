@@ -462,7 +462,7 @@ class WooCommercePurchaser(Purchaser):
             requests.RequestException: If all attempts fail
         """
         logger = get_logger(__name__)
-        max_attempts = 60
+        max_attempts = 180
         attempt = 1
 
         while attempt <= max_attempts:
