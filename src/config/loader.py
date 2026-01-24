@@ -1,7 +1,7 @@
 """Configuration loader."""
 
 from pathlib import Path
-from typing import Union, TypeVar, Type
+from typing import TypeVar, Type
 
 import yaml
 
@@ -15,7 +15,7 @@ class ConfigLoader:
     """Loads and validates configuration from YAML files."""
 
     @staticmethod
-    def load(config_path: Union[Path, str], config_class: Type[T] = Config) -> T:
+    def load(config_path: Path | str, config_class: Type[T] = Config) -> T:
         """Load configuration from YAML file.
 
         Args:

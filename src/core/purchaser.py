@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any
 from urllib.parse import urlencode
 import requests
 from requests.models import Response
@@ -28,16 +28,16 @@ class WooCommercePurchaser(Purchaser):
             timeout: Request timeout in seconds
             user_agent: User agent string
         """
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.user_agent = user_agent
-        self.session = requests.Session()
-        self.session.headers.update({
+        self._base_url = base_url.rstrip("/")
+        self._timeout = timeout
+        self._user_agent = user_agent
+        self._session = requests.Session()
+        self._session.headers.update({
             "User-Agent": user_agent,
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Accept-Language": "zh-TW,zh;q=0.8,en-US;q=0.5,en;q=0.3",
         })
-        self.logger = get_logger(__name__)
+        self._logger = get_logger(__name__)
 
     def add_to_cart(
         self,
@@ -45,7 +45,7 @@ class WooCommercePurchaser(Purchaser):
         product_id: int,
         variation_id: int,
         quantity: int = 1,
-        attributes: Optional[Dict[str, str]] = None,
+        attributes: dict[str, str] | None = None,
     ) -> bool:
         """Add product to cart.
 
@@ -62,7 +62,7 @@ class WooCommercePurchaser(Purchaser):
         Raises:
             PurchaseError: If add to cart fails
         """
-        self.logger.info(f"Adding product {product_id} (variation {variation_id}) to cart")
+        self._logger.info(f"Adding product {product_id} (variation {variation_id}) to cart")
 
         try:
             # Build form data
@@ -84,10 +84,10 @@ class WooCommercePurchaser(Purchaser):
             else:
                 # Remove leading slash if present
                 product_url = product_url.lstrip("/")
-                full_url = f"{self.base_url}/{product_url}"
+                full_url = f"{self._base_url}/{product_url}"
 
-            self.logger.debug(f"Posting to URL: {full_url}")
-            self.logger.debug(f"Form data: {form_data}")
+            self._logger.debug(f"Posting to URL: {full_url}")
+            self._logger.debug(f"Form data: {form_data}")
 
             # Use form-encoded POST (WooCommerce accepts both multipart and form-encoded)
             # Note: Browser typically uses multipart/form-data, but form-encoded should work
@@ -96,7 +96,7 @@ class WooCommercePurchaser(Purchaser):
                 'POST',
                 url=full_url,
                 data=form_data,
-                timeout=self.timeout,
+                timeout=self._timeout,
                 allow_redirects=True,
             )
 
@@ -111,9 +111,9 @@ class WooCommercePurchaser(Purchaser):
 
     def checkout(
         self,
-        billing_info: Dict[str, Any],
-        shipping_info: Dict[str, Any],
-        payment_info: Dict[str, Any],
+        billing_info: dict[str, Any],
+        shipping_info: dict[str, Any],
+        payment_info: dict[str, Any],
     ) -> str:
         """Complete checkout process.
 
@@ -133,16 +133,16 @@ class WooCommercePurchaser(Purchaser):
         Raises:
             PurchaseError: If checkout fails
         """
-        self.logger.info("Starting checkout process")
+        self._logger.info("Starting checkout process")
 
         try:
             # Step 1: Visit checkout page to establish session and get update_order_review_nonce
-            self.logger.debug("Visiting checkout page to establish session")
-            checkout_page_url = f"{self.base_url}/checkout/"
+            self._logger.debug("Visiting checkout page to establish session")
+            checkout_page_url = f"{self._base_url}/checkout/"
             checkout_page = self._retry_request(
                 'GET',
                 url=checkout_page_url,
-                timeout=self.timeout,
+                timeout=self._timeout,
             )
 
             # Extract update_order_review_nonce from wc_checkout_params
@@ -150,10 +150,10 @@ class WooCommercePurchaser(Purchaser):
             if not update_nonce:
                 raise PurchaseError("Failed to extract update_order_review_nonce from checkout page")
 
-            self.logger.debug(f"Extracted update_order_review_nonce: {update_nonce[:10]}...")
+            self._logger.debug(f"Extracted update_order_review_nonce: {update_nonce[:10]}...")
 
             # Step 2: Call update_order_review to get the checkout nonce
-            self.logger.debug("Calling update_order_review to get checkout nonce")
+            self._logger.debug("Calling update_order_review to get checkout nonce")
             checkout_data_for_review = self._build_checkout_payload(
                 billing_info, shipping_info, payment_info
             )
@@ -170,13 +170,13 @@ class WooCommercePurchaser(Purchaser):
 
             update_review_response = self._retry_request(
                 'POST',
-                url=f"{self.base_url}/?wc-ajax=update_order_review",
+                url=f"{self._base_url}/?wc-ajax=update_order_review",
                 data=urlencode(update_review_data),
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                timeout=self.timeout,
+                timeout=self._timeout,
             )
             update_review_response.raise_for_status()
 
@@ -185,14 +185,14 @@ class WooCommercePurchaser(Purchaser):
             if not checkout_nonce:
                 raise PurchaseError("Failed to extract checkout nonce from update_order_review response")
 
-            self.logger.debug(f"Extracted checkout nonce: {checkout_nonce[:10]}...")
+            self._logger.debug(f"Extracted checkout nonce: {checkout_nonce[:10]}...")
 
             # Step 3: Submit final checkout with the nonce
             checkout_data_for_review["woocommerce-process-checkout-nonce"] = checkout_nonce
             checkout_data_for_review["_wp_http_referer"] = "/?wc-ajax=update_order_review"
 
-            self.logger.debug("Submitting final checkout")
-            checkout_url = f"{self.base_url}/?wc-ajax=checkout"
+            self._logger.debug("Submitting final checkout")
+            checkout_url = f"{self._base_url}/?wc-ajax=checkout"
             response = self._retry_request(
                 'POST',
                 url=checkout_url,
@@ -201,7 +201,7 @@ class WooCommercePurchaser(Purchaser):
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                timeout=self.timeout,
+                timeout=self._timeout,
             )
 
             response.raise_for_status()
@@ -211,7 +211,7 @@ class WooCommercePurchaser(Purchaser):
 
             if result.get("result") == "success":
                 order_id = result.get("order_id", "unknown")
-                self.logger.info(f"Checkout successful, order ID: {order_id}")
+                self._logger.info(f"Checkout successful, order ID: {order_id}")
                 return str(order_id)
             else:
                 error_msg = result.get("messages", "Unknown error")
@@ -222,7 +222,7 @@ class WooCommercePurchaser(Purchaser):
         except Exception as e:
             raise PurchaseError(f"Checkout failed: {e}") from e
 
-    def _extract_update_order_review_nonce(self, html: str) -> Optional[str]:
+    def _extract_update_order_review_nonce(self, html: str) -> str | None:
         """Extract update_order_review nonce from checkout page.
 
         Args:
@@ -239,7 +239,7 @@ class WooCommercePurchaser(Purchaser):
 
         return None
 
-    def _extract_checkout_nonce(self, response_text: str) -> Optional[str]:
+    def _extract_checkout_nonce(self, response_text: str) -> str | None:
         """Extract checkout nonce from update_order_review response.
 
         Args:
@@ -265,10 +265,10 @@ class WooCommercePurchaser(Purchaser):
 
     def _build_checkout_payload(
         self,
-        billing_info: Dict[str, Any],
-        shipping_info: Dict[str, Any],
-        payment_info: Dict[str, Any],
-    ) -> Dict[str, str]:
+        billing_info: dict[str, Any],
+        shipping_info: dict[str, Any],
+        payment_info: dict[str, Any],
+    ) -> dict[str, str]:
         """Build checkout form payload.
 
         Args:
@@ -292,10 +292,10 @@ class WooCommercePurchaser(Purchaser):
             "wc_order_attribution_utm_source_platform": "(none)",
             "wc_order_attribution_utm_creative_format": "(none)",
             "wc_order_attribution_utm_marketing_tactic": "(none)",
-            "wc_order_attribution_session_entry": self.base_url,
+            "wc_order_attribution_session_entry": self._base_url,
             "wc_order_attribution_session_pages": "5",
             "wc_order_attribution_session_count": "1",
-            "wc_order_attribution_user_agent": self.user_agent,
+            "wc_order_attribution_user_agent": self._user_agent,
         }
 
         # Add billing info
@@ -330,7 +330,7 @@ class WooCommercePurchaser(Purchaser):
             "shipping_postcode": shipping_info.get("postcode", ""),
             "shipping_phone": shipping_info.get("phone", ""),
             "shipping_method[0]": shipping_method,
-            "e_deliverydate_0": self.get_earliest_delivery_date(shipping_method),
+            "e_deliverydate_0": self._get_earliest_delivery_date(shipping_method),
         })
 
         # Add payment info
@@ -347,7 +347,7 @@ class WooCommercePurchaser(Purchaser):
 
         return payload
 
-    def get_earliest_delivery_date(
+    def _get_earliest_delivery_date(
         self,
         shipping_method: str = "local_pickup:8",
     ) -> str:
@@ -362,7 +362,7 @@ class WooCommercePurchaser(Purchaser):
         Raises:
             PurchaseError: If no dates available or API call fails
         """
-        dates = self.get_available_delivery_dates(shipping_method)
+        dates = self._get_available_delivery_dates(shipping_method)
 
         if not dates:
             raise PurchaseError("No delivery dates available")
@@ -378,20 +378,20 @@ class WooCommercePurchaser(Purchaser):
                 # Check if date is later than today
                 if date_obj.date() > today:
                     formatted_date = date_obj.strftime("%Y-%m-%d")
-                    self.logger.info(f"Earliest delivery date: {formatted_date} (availability: {availability})")
+                    self._logger.info(f"Earliest delivery date: {formatted_date} (availability: {availability})")
                     return formatted_date
 
             except ValueError as e:
-                self.logger.warning(f"Failed to parse date '{date_str}': {e}")
+                self._logger.warning(f"Failed to parse date '{date_str}': {e}")
                 continue
 
         # If no future date found, raise error
         raise PurchaseError("No delivery dates available after today")
 
-    def get_available_delivery_dates(
+    def _get_available_delivery_dates(
         self,
         shipping_method: str = "local_pickup:8",
-    ) -> List[Tuple[str, str]]:
+    ) -> list[tuple[str, str]]:
         """Fetch available delivery dates from the API.
 
         Args:
@@ -405,7 +405,7 @@ class WooCommercePurchaser(Purchaser):
         Raises:
             PurchaseError: If API call fails or cannot parse dates
         """
-        self.logger.info("Fetching available delivery dates")
+        self._logger.info("Fetching available delivery dates")
 
         try:
             # Build request data
@@ -420,13 +420,13 @@ class WooCommercePurchaser(Purchaser):
             # Call the API
             response = self._retry_request(
                 'POST',
-                url=f"{self.base_url}/?wc-ajax=orddd_update_delivery_session",
+                url=f"{self._base_url}/?wc-ajax=orddd_update_delivery_session",
                 data=urlencode(request_data, doseq=True),
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                timeout=self.timeout,
+                timeout=self._timeout,
             )
 
             response.raise_for_status()
@@ -440,7 +440,7 @@ class WooCommercePurchaser(Purchaser):
             if not matches:
                 raise PurchaseError("No delivery dates found in API response")
 
-            self.logger.debug(f"Found {len(matches)} available delivery dates")
+            self._logger.debug(f"Found {len(matches)} available delivery dates")
             return matches
 
         except requests.RequestException as e:
@@ -461,7 +461,6 @@ class WooCommercePurchaser(Purchaser):
         Raises:
             requests.RequestException: If all attempts fail
         """
-        logger = get_logger(__name__)
         max_attempts = 180
         attempt = 1
 
@@ -469,9 +468,9 @@ class WooCommercePurchaser(Purchaser):
             try:
                 match method:
                     case 'GET':
-                        resp = self.session.get(**kwargs)
+                        resp = self._session.get(**kwargs)
                     case 'POST':
-                        resp = self.session.post(**kwargs)
+                        resp = self._session.post(**kwargs)
                     case _:
                         raise ValueError(f"Unsupported method: {method}")
 
@@ -480,8 +479,8 @@ class WooCommercePurchaser(Purchaser):
                 return resp
             except requests.RequestException as e:
                 if attempt == max_attempts:
-                    logger.error(f"Request failed after {max_attempts} attempts: {e}")
+                    self._logger.error(f"Request failed after {max_attempts} attempts: {e}")
                     raise
 
-                logger.warning(f"Request attempt {attempt}/{max_attempts} failed: {e}.")
+                self._logger.warning(f"Request attempt {attempt}/{max_attempts} failed: {e}.")
                 attempt += 1

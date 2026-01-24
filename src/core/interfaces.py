@@ -1,8 +1,7 @@
 """Abstract interfaces for core components."""
 
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any
 
 
 class Checker(ABC):
@@ -24,57 +23,51 @@ class Checker(ABC):
         pass
 
 
-class Notifier(ABC):
-    """Interface for sending notifications."""
-
-    @abstractmethod
-    def notify(self, product_name: str, product_url: str) -> None:
-        """Send notification about product availability.
-
-        Args:
-            product_name: Name of the product
-            product_url: URL of the product
-
-        Raises:
-            NotificationError: If notification fails
-        """
-        pass
-
-
 class StateStore(ABC):
     """Interface for managing notification state."""
 
     @abstractmethod
-    def was_notified(self, product_url: str) -> bool:
-        """Check if product was already notified.
+    def set(self, key: str, value: str) -> None:
+        """Set a state value.
 
         Args:
-            product_url: Product URL
+            key: State key
+            value: State value
+        """
+        pass
+
+    @abstractmethod
+    def get(self, key: str) -> str | None:
+        """Get a state value.
+
+        Args:
+            key: State key
 
         Returns:
-            True if already notified, False otherwise
+            State value
         """
         pass
 
     @abstractmethod
-    def mark_notified(self, product_url: str, timestamp: Optional[datetime] = None) -> None:
-        """Mark product as notified.
+    def delete(self, key: str) -> None:
+        """Delete a state value.
 
         Args:
-            product_url: Product URL
-            timestamp: Notification timestamp (defaults to now)
+            key: State key
         """
         pass
 
     @abstractmethod
-    def clear_notification(self, product_url: str) -> None:
-        """Clear notification record for product.
+    def has_key(self, key: str) -> bool:
+        """Check if state has a specific key.
 
         Args:
-            product_url: Product URL
+            key: State key
+
+        Returns:
+            True if key exists, False otherwise
         """
         pass
-
 
 class Purchaser(ABC):
     """Interface for automating product purchases."""
@@ -86,7 +79,7 @@ class Purchaser(ABC):
         product_id: int,
         variation_id: int,
         quantity: int = 1,
-        attributes: Optional[Dict[str, str]] = None
+        attributes: dict[str, str] | None = None
     ) -> bool:
         """Add product to cart.
 
@@ -106,8 +99,12 @@ class Purchaser(ABC):
         pass
 
     @abstractmethod
-    def checkout(self, billing_info: Dict[str, Any], shipping_info: Dict[str, Any],
-                 payment_info: Dict[str, Any]) -> str:
+    def checkout(
+        self,
+        billing_info: dict[str, Any],
+        shipping_info: dict[str, Any],
+        payment_info: dict[str, Any]
+    ) -> str:
         """Complete checkout process.
 
         Args:

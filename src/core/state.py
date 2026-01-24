@@ -1,9 +1,7 @@
 """State management for notification tracking."""
 
 import json
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Union
 
 from src.core.interfaces import StateStore
 from src.utils.logger import get_logger
@@ -14,162 +12,76 @@ logger = get_logger(__name__)
 class JsonStateStore(StateStore):
     """Stores notification state in JSON file."""
 
-    def __init__(self, file_path: Union[Path, str]):
+    def __init__(self, file_path: Path | str):
         """Initialize state store.
 
         Args:
             file_path: Path to state file
         """
-        self.file_path = Path(file_path)
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
-        self._ensure_file_exists()
+        self._file_path = Path(file_path)
+        self._file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._state = self._read_state()
 
-    def _ensure_file_exists(self) -> None:
-        """Ensure state file exists with empty dict."""
-        if not self.file_path.exists():
-            self._write_state({})
-
-    def _read_state(self) -> Dict[str, str]:
+    def _read_state(self) -> dict[str, str]:
         """Read state from file.
 
         Returns:
             State dictionary {url: timestamp}
         """
         try:
-            with open(self.file_path, "r", encoding="utf-8") as f:
+            with open(self._file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
             logger.warning("Corrupted state file - initializing empty state")
             return {}
 
-    def _write_state(self, state: Dict[str, str]) -> None:
+    def _write_state(self) -> None:
         """Write state to file.
 
         Args:
             state: State dictionary to write
         """
-        with open(self.file_path, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        with open(self._file_path, "w", encoding="utf-8") as f:
+            json.dump(self._state, f, indent=2, ensure_ascii=False)
 
-    def was_notified(self, product_url: str) -> bool:
-        """Check if product was already notified.
+    def set(self, key: str, value: str) -> None:
+        """Set a state value.
 
         Args:
-            product_url: Product URL
+            key: State key
+            value: State value
+        """
+        self._state[key] = value
+        self._write_state()
+
+    def get(self, key: str) -> str | None:
+        """Get a state value.
+
+        Args:
+            key: State key
 
         Returns:
-            True if already notified, False otherwise
+            State value
         """
-        state = self._read_state()
-        return product_url in state
+        return self._state.get(key)
 
-    def mark_notified(self, product_url: str, timestamp: Optional[datetime] = None) -> None:
-        """Mark product as notified.
+    def delete(self, key: str) -> None:
+        """Delete a state value.
 
         Args:
-            product_url: Product URL
-            timestamp: Notification timestamp (defaults to now)
+            key: State key
         """
-        if timestamp is None:
-            timestamp = datetime.now()
+        if key in self._state:
+            del self._state[key]
+            self._write_state()
 
-        state = self._read_state()
-        state[product_url] = timestamp.isoformat()
-        self._write_state(state)
-
-        logger.info(f"Marked {product_url} as notified at {timestamp}")
-
-    def clear_notification(self, product_url: str) -> None:
-        """Clear notification record for product.
+    def has_key(self, key: str) -> bool:
+        """Check if state has a specific key.
 
         Args:
-            product_url: Product URL
-        """
-        state = self._read_state()
-        if product_url in state:
-            del state[product_url]
-            self._write_state(state)
-            logger.info(f"Cleared notification record for {product_url}")
-
-    def has_purchased(self, product_id: int, variation_id: int) -> bool:
-        """Check if product variation has been purchased.
-
-        Args:
-            product_id: Product ID
-            variation_id: Variation ID
+            key: State key
 
         Returns:
-            True if already purchased, False otherwise
+            True if key exists, False otherwise
         """
-        state = self._read_state()
-        key = f"{product_id}_{variation_id}"
-
-        if key in state:
-            purchase_info = state[key]
-            if isinstance(purchase_info, dict):
-                logger.info(
-                    f"Product {product_id} variation {variation_id} was already purchased. "
-                    f"Order ID: {purchase_info.get('order_id')}, "
-                    f"Time: {purchase_info.get('timestamp')}"
-                )
-                return True
-
-        return False
-
-    def mark_purchased(
-        self,
-        product_id: int,
-        variation_id: int,
-        order_id: str,
-    ) -> None:
-        """Mark product variation as purchased.
-
-        Args:
-            product_id: Product ID
-            variation_id: Variation ID
-            order_id: Order ID from successful purchase
-        """
-        state = self._read_state()
-        key = f"{product_id}_{variation_id}"
-
-        state[key] = {
-            "order_id": order_id,
-            "timestamp": datetime.now().isoformat(),
-            "product_id": product_id,
-            "variation_id": variation_id,
-        }
-
-        self._write_state(state)
-        logger.info(
-            f"Marked product {product_id} variation {variation_id} as purchased. "
-            f"Order ID: {order_id}"
-        )
-
-    def clear_purchase(self, product_id: int, variation_id: int) -> None:
-        """Clear purchase record for a product variation.
-
-        Args:
-            product_id: Product ID
-            variation_id: Variation ID
-        """
-        state = self._read_state()
-        key = f"{product_id}_{variation_id}"
-
-        if key in state:
-            del state[key]
-            self._write_state(state)
-            logger.info(f"Cleared purchase record for product {product_id} variation {variation_id}")
-
-    def get_purchase_info(self, product_id: int, variation_id: int) -> Optional[Dict]:
-        """Get purchase information for a product variation.
-
-        Args:
-            product_id: Product ID
-            variation_id: Variation ID
-
-        Returns:
-            Purchase info dictionary if found, None otherwise
-        """
-        state = self._read_state()
-        key = f"{product_id}_{variation_id}"
-        return state.get(key) if isinstance(state.get(key), dict) else None
+        return key in self._state
