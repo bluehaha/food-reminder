@@ -4,25 +4,6 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
-class Checker(ABC):
-    """Interface for product availability checking."""
-
-    @abstractmethod
-    def is_available(self, url: str) -> bool:
-        """Check if product is available.
-
-        Args:
-            url: Product URL to check
-
-        Returns:
-            True if product is in stock, False otherwise
-
-        Raises:
-            CheckerError: If check fails
-        """
-        pass
-
-
 class StateStore(ABC):
     """Interface for managing notification state."""
 
