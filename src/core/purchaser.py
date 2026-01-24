@@ -158,37 +158,38 @@ class WooCommercePurchaser(Purchaser):
                 billing_info, shipping_info, payment_info
             )
 
-            update_review_data = {
-                "security": update_nonce,
-                "payment_method": payment_info.get("method", "sinopac-self-hosted-credit"),
-                "country": billing_info.get("country", "TW"),
-                "s_country": shipping_info.get("country", "TW"),
-                "has_full_address": "false",
-                "post_data": urlencode(checkout_data_for_review),
-                "shipping_method[0]": shipping_info.get("method", "local_pickup:8"),
-            }
-
-            update_review_response = self._retry_request(
-                'POST',
-                url=f"{self._base_url}/?wc-ajax=update_order_review",
-                data=urlencode(update_review_data),
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
-                timeout=self._timeout,
-            )
-            update_review_response.raise_for_status()
-
-            # Extract checkout nonce from response
-            checkout_nonce = self._extract_checkout_nonce(update_review_response.text)
-            if not checkout_nonce:
-                raise PurchaseError("Failed to extract checkout nonce from update_order_review response")
-
-            self._logger.debug(f"Extracted checkout nonce: {checkout_nonce[:10]}...")
+            # update_review_data = {
+            #     "security": update_nonce,
+            #     "payment_method": payment_info.get("method", "sinopac-self-hosted-credit"),
+            #     "country": billing_info.get("country", "TW"),
+            #     "s_country": shipping_info.get("country", "TW"),
+            #     "has_full_address": "false",
+            #     "post_data": urlencode(checkout_data_for_review),
+            #     "shipping_method[0]": shipping_info.get("method", "local_pickup:8"),
+            # }
+            #
+            # update_review_response = self._retry_request(
+            #     'POST',
+            #     url=f"{self._base_url}/?wc-ajax=update_order_review",
+            #     data=urlencode(update_review_data),
+            #     headers={
+            #         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            #         "X-Requested-With": "XMLHttpRequest",
+            #     },
+            #     timeout=self._timeout,
+            # )
+            # update_review_response.raise_for_status()
+            #
+            # # Extract checkout nonce from response
+            # checkout_nonce = self._extract_checkout_nonce(update_review_response.text)
+            # if not checkout_nonce:
+            #     raise PurchaseError("Failed to extract checkout nonce from update_order_review response")
+            #
+            # self._logger.debug(f"Extracted checkout nonce: {checkout_nonce[:10]}...")
 
             # Step 3: Submit final checkout with the nonce
-            checkout_data_for_review["woocommerce-process-checkout-nonce"] = checkout_nonce
+            # checkout_data_for_review["woocommerce-process-checkout-nonce"] = checkout_nonce
+            checkout_data_for_review["woocommerce-process-checkout-nonce"] = update_nonce
             checkout_data_for_review["_wp_http_referer"] = "/?wc-ajax=update_order_review"
 
             self._logger.debug("Submitting final checkout")
@@ -443,10 +444,8 @@ class WooCommercePurchaser(Purchaser):
             self._logger.debug(f"Found {len(matches)} available delivery dates")
             return matches
 
-        except requests.RequestException as e:
-            raise PurchaseError(f"Failed to fetch delivery dates: {e}") from e
         except Exception as e:
-            raise PurchaseError(f"Failed to parse delivery dates: {e}") from e
+            raise PurchaseError(f"Failed to fetch delivery dates: {e}") from e
 
     def _retry_request(self, method: str, **kwargs) -> Response:
         """Retry a request with multiple attempts.
