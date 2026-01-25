@@ -3,6 +3,7 @@
 
 import argparse
 import sys
+import os
 from pathlib import Path
 
 # Add parent directory to path to import from src
@@ -65,6 +66,7 @@ def main() -> None:
         base_url=str(config.base_url),
         timeout=config.timeout,
         user_agent=config.user_agent,
+        base_path=os.path.abspath(os.getcwd())
     )
 
     try:
