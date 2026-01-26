@@ -6,65 +6,91 @@ import re
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
-import requests
-from requests.adapters import HTTPAdapter
-from requests.models import Response
-from urllib3.util.retry import Retry
 
-from src.core.interfaces import Purchaser
-from src.utils.exceptions import PurchaseError
+from src.config.models import PurchaseConfig
+from src.core.notifier import SlackNotifier
+from src.utils.exceptions import Purchase502Error, PurchaseError
 from src.utils.logger import get_logger
 
+import requests
+from requests.models import Response
+import concurrent.futures
 
-class WooCommercePurchaser(Purchaser):
+
+class WooCommercePurchaser():
     """WooCommerce-specific purchaser implementation."""
 
     def __init__(
         self,
-        base_url: str,
-        timeout: int = 120,
-        user_agent: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0",
+        config: PurchaseConfig,
+        slack_notifier: SlackNotifier,
         base_path: str = '',
     ):
         """Initialize purchaser.
 
         Args:
-            base_url: Base URL of the WooCommerce site
-            timeout: Request timeout in seconds
-            user_agent: User agent string
+            config: Purchase configuration
+            slack_notifier: Slack notifier instance
+            base_path: Base path for storing state files
         """
-        self._base_url = base_url.rstrip("/")
-        self._timeout = timeout
-        self._user_agent = user_agent
+        self._config = config
+        self._slack_notifier = slack_notifier
         self._logger = get_logger(__name__)
-        self._session = self._init_session(user_agent, base_path)
+        self._session = self._init_session(base_path)
+        self._refresh_flags()
 
-    def _init_session(self, user_agent: str, base_path: str) -> requests.Session:
+    def _init_session(self, base_path: str) -> requests.Session:
         session = requests.Session()
         session.headers.update({
-            "User-Agent": user_agent,
+            "User-Agent": self._config.user_agent,
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Accept-Language": "zh-TW,zh;q=0.8,en-US;q=0.5,en;q=0.3",
         })
-
-        retry_strategy = Retry(
-            total=180,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
-        )
-        adapter = HTTPAdapter(
-            pool_connections=10,
-            pool_maxsize=15,
-            max_retries=retry_strategy
-        )
-
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
 
         # I am not sure if this function can accelerate the process, so it is disabled for now.
         # self._load_session_cookies_or_create_new(session, os.path.join(base_path, "state/cookies.json"))
 
         return session
+
+    def _refresh_flags(self) -> None:
+        self._multi_thread_flags = {
+            'add_to_cart': False,
+            'checkout_page': False,
+            'delivery_dates': False,
+            'checkout': False,
+        }
+
+
+    def purchase(self) -> bool:
+        self._refresh_flags()
+
+        try:
+            success = self._add_to_cart()
+
+            if not success:
+                self._logger.error("Failed to add product to cart")
+                return False
+
+            self._logger.info("Product added to cart successfully")
+            self._slack_notifier.send_product_available("Strawberry", f"{self._config.base_url}/{self._config.product.url}")
+
+            self._checkout()
+
+            self._logger.info("Maybe Purchase complete!")
+            print("✓ Maybe Purchase successful!")
+
+            self._slack_notifier.send_successful_purchase(
+                order_id="fake-order-id",
+                product_name=self._config.product.url,
+            )
+
+            return True
+        except PurchaseError as e:
+            self._logger.error(f"Purchase error: {e}")
+            print(f"Error: {e}")
+            self._slack_notifier.send_purchase_error(e, 'fail')
+
+        return False
 
     def _load_session_cookies_or_create_new(self, session: requests.Session, filepath: str) -> None:
         """Load cookies from file into session.
@@ -80,194 +106,165 @@ class WooCommercePurchaser(Purchaser):
                 self._logger.info(f"Loaded cookies from {filepath}")
         except FileNotFoundError:
             self._logger.info(f"Cookies file {filepath} not found, creating new session")
-            response = session.get(f"{self._base_url}/")
+            response = session.get(f"{self._config.base_url}/")
             print(response.cookies.items())
             with open(filepath, "w", encoding="utf-8") as f:
                 cookies_dict = requests.utils.dict_from_cookiejar(session.cookies)
                 json.dump(cookies_dict, f, ensure_ascii=False, indent=4)
                 self._logger.info(f"Saved new cookies to {filepath}")
 
-    def add_to_cart(
-        self,
-        product_url: str,
-        product_id: int,
-        variation_id: int,
-        quantity: int = 1,
-        attributes: dict[str, str] | None = None,
-    ) -> bool:
+    def _add_to_cart(self) -> bool:
         """Add product to cart.
-
-        Args:
-            product_url: Product URL or slug (e.g., "product/草莓大福/" or full URL)
-            product_id: Product ID
-            variation_id: Variation ID
-            quantity: Quantity to add
-            attributes: Product attributes (e.g., {"盒數": "5盒"})
 
         Returns:
             True if successfully added to cart
 
         Raises:
-            PurchaseError: If add to cart fails
+            Purchase502Error: If 502 Bad Gateway received
         """
-        self._logger.info(f"Adding product {product_id} (variation {variation_id}) to cart")
+        form_data, url = self._prepare_add_to_cart_payload()
 
-        try:
-            # Build form data
-            form_data = {
-                "quantity": str(quantity),
-                "add-to-cart": str(product_id),
-                "product_id": str(product_id),
-                "variation_id": str(variation_id),
+        self._logger.debug(f"Add to Cart Form data: {form_data}")
+
+        responses = self._call_api_with_multi_threaded('add_to_cart', 'POST', url, data=form_data)
+
+        has_502_error = False
+
+        for response in responses:
+            if isinstance(response, Response):
+                if response.status_code == 502:
+                    has_502_error = True
+                    continue
+
+                # Check for error messages in response
+                response_lower = response.text.lower()
+                if response.status_code == 200 and not ('cannot add' in response_lower or 'out of stock' in response_lower or '缺貨' in response.text):
+                    return True
+
+        if has_502_error:
+            raise Purchase502Error("Received 502 Bad Gateway during add to cart")
+
+        return False
+
+    def _call_api_with_multi_threaded(self, flag: str, method: str, url: str, **kwargs) -> list[Response | None]:
+        responses = []
+        urls = [url] * 5
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_url = {
+                executor.submit(self._send_request_with_retry, flag, method, url, **kwargs): url for url in urls
             }
+            for future in concurrent.futures.as_completed(future_to_url):
+                response = future.result()
+                responses.append(response)
 
-            # Add attributes if provided
-            if attributes:
-                for key, value in attributes.items():
-                    form_data[f"attribute_{key}"] = value
+        return responses
 
-            # Construct full URL if needed
-            if product_url.startswith("http"):
-                full_url = product_url
-            else:
-                # Remove leading slash if present
-                product_url = product_url.lstrip("/")
-                full_url = f"{self._base_url}/{product_url}"
+    def _send_request_with_retry(self, flag: str, method: str, url: str, **kwargs) -> Response | None:
+        max_retries = self._config.max_retries
+        response = None
 
-            self._logger.debug(f"Posting to URL: {full_url}")
-            self._logger.debug(f"Form data: {form_data}")
-
-            # Use form-encoded POST (WooCommerce accepts both multipart and form-encoded)
-            # Note: Browser typically uses multipart/form-data, but form-encoded should work
-
-            response = self._session.post(
-                url=full_url,
-                data=form_data,
-                timeout=self._timeout,
-                allow_redirects=True,
+        while (not self._multi_thread_flags[flag]) and max_retries > 0:
+            response = self._session.request(
+                method=method,
+                url=url,
+                timeout=self._config.timeout,
+                **kwargs,
             )
+            max_retries -= 1
 
-            # Check for error messages in response
-            response_lower = response.text.lower()
-            if 'cannot add' in response_lower or 'out of stock' in response_lower or '缺貨' in response.text:
-                return False
+            if response.status_code == 200:
+                self._multi_thread_flags[flag] = True
+                self._logger.info(f"Successfully performed {method} request to {url}")
+                break
 
-            return True
-        except requests.RequestException as e:
-            raise PurchaseError(f"Failed to add to cart: {e}") from e
+        return response
 
-    def checkout(
-        self,
-        billing_info: dict[str, Any],
-        shipping_info: dict[str, Any],
-        payment_info: dict[str, Any],
-    ) -> str:
+    def _prepare_add_to_cart_payload(self) -> tuple[dict[str, Any], str]:
+        product_url=self._config.product.url
+
+        # Build form data
+        form_data = {
+            "quantity": str(self._config.product.quantity),
+            "add-to-cart": str(self._config.product.product_id),
+            "product_id": str(self._config.product.product_id),
+            "variation_id": str(self._config.product.variation_id),
+        }
+
+        # Add attributes if provided
+        if self._config.product.attributes:
+            for key, value in self._config.product.attributes.items():
+                form_data[f"attribute_{key}"] = value
+
+        # Construct full URL if needed
+        if product_url.startswith("http"):
+            url = product_url
+        else:
+            # Remove leading slash if present
+            product_url = product_url.lstrip("/")
+            url = f"{self._config.base_url}/{product_url}"
+
+        return form_data, url
+
+    def _checkout(self) -> None:
         """Complete checkout process.
-
-        Args:
-            billing_info: Billing information dict with keys:
-                - first_name, last_name, company, country, address_1, city,
-                  postcode, phone, email, carruer_type, invoice_type
-            shipping_info: Shipping information dict with keys:
-                - method, delivery_date, time_slot (optional)
-            payment_info: Payment information dict with keys:
-                - method (e.g., "sinopac-self-hosted-credit")
-                - card_number, expiry_month, expiry_year, cvv (for credit card)
-
-        Returns:
-            Order ID or confirmation number
 
         Raises:
             PurchaseError: If checkout fails
         """
         self._logger.info("Starting checkout process")
 
+        # Convert config models to dicts
+        billing_info = self._config.billing_info.model_dump()
+        shipping_info = self._config.shipping_info.model_dump()
+        payment_info = self._config.payment_info.model_dump()
+
         try:
             # Step 1: Visit checkout page to establish session and get update_order_review_nonce
             self._logger.debug("Visiting checkout page to establish session")
-            checkout_page_url = f"{self._base_url}/checkout/"
-            checkout_page = self._session.get(
-                url=checkout_page_url,
-                timeout=self._timeout,
-            )
+            checkout_page_url = f"{self._config.base_url}/checkout/"
+
+            checkout_page_responses = self._call_api_with_multi_threaded('checkout_page', 'GET', checkout_page_url)
 
             # Extract update_order_review_nonce from wc_checkout_params
-            update_nonce = self._extract_update_order_review_nonce(checkout_page.text)
+            update_nonce = self._extract_update_order_review_nonce(checkout_page_responses)
             if not update_nonce:
                 raise PurchaseError("Failed to extract update_order_review_nonce from checkout page")
 
             self._logger.debug(f"Extracted update_order_review_nonce: {update_nonce[:10]}...")
 
-            # Step 2: Call update_order_review to get the checkout nonce
-            self._logger.debug("Calling update_order_review to get checkout nonce")
             checkout_data_for_review = self._build_checkout_payload(
                 billing_info, shipping_info, payment_info
             )
 
-            # update_review_data = {
-            #     "security": update_nonce,
-            #     "payment_method": payment_info.get("method", "sinopac-self-hosted-credit"),
-            #     "country": billing_info.get("country", "TW"),
-            #     "s_country": shipping_info.get("country", "TW"),
-            #     "has_full_address": "false",
-            #     "post_data": urlencode(checkout_data_for_review),
-            #     "shipping_method[0]": shipping_info.get("method", "local_pickup:8"),
-            # }
-            #
-            # update_review_response = self._session.post(
-            #     url=f"{self._base_url}/?wc-ajax=update_order_review",
-            #     data=urlencode(update_review_data),
-            #     headers={
-            #         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            #         "X-Requested-With": "XMLHttpRequest",
-            #     },
-            #     timeout=self._timeout,
-            # )
-            # update_review_response.raise_for_status()
-            #
-            # # Extract checkout nonce from response
-            # checkout_nonce = self._extract_checkout_nonce(update_review_response.text)
-            # if not checkout_nonce:
-            #     raise PurchaseError("Failed to extract checkout nonce from update_order_review response")
-            #
-            # self._logger.debug(f"Extracted checkout nonce: {checkout_nonce[:10]}...")
-
-            # Step 3: Submit final checkout with the nonce
-            # checkout_data_for_review["woocommerce-process-checkout-nonce"] = checkout_nonce
+            # Step 2: Submit final checkout with the nonce
             checkout_data_for_review["woocommerce-process-checkout-nonce"] = update_nonce
             checkout_data_for_review["_wp_http_referer"] = "/?wc-ajax=update_order_review"
 
-            self._logger.debug("Submitting final checkout")
-            checkout_url = f"{self._base_url}/?wc-ajax=checkout"
-            response = self._session.post(
-                url=checkout_url,
+            self._logger.debug(f"Add to Cart Form data: {urlencode(checkout_data_for_review)}")
+            checkout_url = f"{self._config.base_url}/?wc-ajax=checkout"
+
+            checkout_responses = self._call_api_with_multi_threaded(
+                'checkout',
+                'POST',
+                checkout_url,
                 data=urlencode(checkout_data_for_review),
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                timeout=self._timeout,
             )
 
-            response.raise_for_status()
+            for response in checkout_responses:
+                if response is None:
+                    continue
 
-            # Parse response
-            result = response.json()
+                self._logger.info(f"---------\n\n{response.text}\n\n")
 
-            if result.get("result") == "success":
-                order_id = result.get("order_id", "unknown")
-                self._logger.info(f"Checkout successful, order ID: {order_id}")
-                return str(order_id)
-            else:
-                error_msg = result.get("messages", "Unknown error")
-                raise PurchaseError(f"Checkout failed: {error_msg}")
-
-        except requests.RequestException as e:
-            raise PurchaseError(f"Checkout request failed: {e}") from e
         except Exception as e:
             raise PurchaseError(f"Checkout failed: {e}") from e
 
-    def _extract_update_order_review_nonce(self, html: str) -> str | None:
+    def _extract_update_order_review_nonce(self, responses: list[Response|None]) -> str | None:
         """Extract update_order_review nonce from checkout page.
 
         Args:
@@ -276,11 +273,16 @@ class WooCommercePurchaser(Purchaser):
         Returns:
             Nonce value if found, None otherwise
         """
-        # Look for wc_checkout_params.update_order_review_nonce in JavaScript
-        pattern = r'"update_order_review_nonce"\s*:\s*"([a-f0-9]+)"'
-        match = re.search(pattern, html)
-        if match:
-            return match.group(1)
+        for response in responses:
+            if response is None:
+                continue
+
+            html = response.text
+
+            pattern = r'"update_order_review_nonce"\s*:\s*"([a-f0-9]+)"'
+            match = re.search(pattern, html)
+            if match:
+                return match.group(1)
 
         return None
 
@@ -337,10 +339,10 @@ class WooCommercePurchaser(Purchaser):
             "wc_order_attribution_utm_source_platform": "(none)",
             "wc_order_attribution_utm_creative_format": "(none)",
             "wc_order_attribution_utm_marketing_tactic": "(none)",
-            "wc_order_attribution_session_entry": self._base_url,
+            "wc_order_attribution_session_entry": self._config.base_url,
             "wc_order_attribution_session_pages": "5",
             "wc_order_attribution_session_count": "1",
-            "wc_order_attribution_user_agent": self._user_agent,
+            "wc_order_attribution_user_agent": self._config.user_agent,
         }
 
         # Add billing info
@@ -464,13 +466,13 @@ class WooCommercePurchaser(Purchaser):
 
             # Call the API
             response = self._session.post(
-                url=f"{self._base_url}/?wc-ajax=orddd_update_delivery_session",
+                url=f"{self._config.base_url}/?wc-ajax=orddd_update_delivery_session",
                 data=urlencode(request_data, doseq=True),
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                timeout=self._timeout,
+                timeout=self._config.timeout,
             )
 
             response.raise_for_status()
@@ -489,3 +491,32 @@ class WooCommercePurchaser(Purchaser):
 
         except Exception as e:
             raise PurchaseError(f"Failed to fetch delivery dates: {e}") from e
+
+
+            # update_review_data = {
+            #     "security": update_nonce,
+            #     "payment_method": payment_info.get("method", "sinopac-self-hosted-credit"),
+            #     "country": billing_info.get("country", "TW"),
+            #     "s_country": shipping_info.get("country", "TW"),
+            #     "has_full_address": "false",
+            #     "post_data": urlencode(checkout_data_for_review),
+            #     "shipping_method[0]": shipping_info.get("method", "local_pickup:8"),
+            # }
+            #
+            # update_review_response = self._session.post(
+            #     url=f"{self._config.base_url}/?wc-ajax=update_order_review",
+            #     data=urlencode(update_review_data),
+            #     headers={
+            #         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            #         "X-Requested-With": "XMLHttpRequest",
+            #     },
+            #     timeout=self._config.timeout,
+            # )
+            # update_review_response.raise_for_status()
+            #
+            # # Extract checkout nonce from response
+            # checkout_nonce = self._extract_checkout_nonce(update_review_response.text)
+            # if not checkout_nonce:
+            #     raise PurchaseError("Failed to extract checkout nonce from update_order_review response")
+            #
+            # self._logger.debug(f"Extracted checkout nonce: {checkout_nonce[:10]}...")

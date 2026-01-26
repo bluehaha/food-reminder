@@ -35,3 +35,9 @@ class PurchaseError(FoodReminderError):
     """Product purchase errors."""
 
     pass
+
+
+class Purchase502Error(FoodReminderError):
+    """Product purchase 502 errors."""
+
+    pass

@@ -63,7 +63,6 @@ class Config(BaseModel):
 
     # Retry settings
     max_retries: int = Field(default=3, description="Max HTTP retries")
-    retry_delay: int = Field(default=2, description="Delay between retries in seconds")
 
     model_config = {"validate_assignment": True}
 
@@ -126,7 +125,7 @@ class PaymentInfoConfig(BaseModel):
 class PurchaseConfig(BaseModel):
     """Purchase automation configuration."""
 
-    base_url: HttpUrl
+    base_url: str
     product: PurchaseProductConfig
     billing_info: BillingInfoConfig
     shipping_info: ShippingInfoConfig
@@ -138,3 +137,4 @@ class PurchaseConfig(BaseModel):
         default="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0",
         description="User agent for HTTP requests",
     )
+    max_retries: int = Field(default=3, description="Max HTTP retries")

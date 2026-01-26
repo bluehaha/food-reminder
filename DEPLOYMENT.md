@@ -78,7 +78,6 @@ state:
 timeout: 30
 user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 max_retries: 3
-retry_delay: 2
 EOF
 
 # Edit the config with your actual values

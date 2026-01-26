@@ -55,6 +55,7 @@ payment_info:
 # HTTP settings
 timeout: 30
 user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0"
+max_retries: 3
 
 # Slack notification settings
 slack:
