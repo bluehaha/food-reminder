@@ -25,7 +25,7 @@ RUN poetry install --only main --no-interaction --no-ansi
 # Copy application code
 COPY src/ ./src/
 COPY scripts/ ./scripts/
-COPY conf/config.example.yaml ./conf/
+RUN mkdir -p /app/conf
 
 # Create state directory
 RUN mkdir -p state
