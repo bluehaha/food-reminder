@@ -96,6 +96,9 @@ def main() -> None:
         except Purchase502Error as e:
             logger.error(f"Receive 502 Error during purchase: {e}. Retrying immediately...")
             slack_notifier.send_purchase_error(e, 'fail')
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}. shutting down.")
+            slack_notifier.send_purchase_error(e, 'fail')
 
 
 if __name__ == "__main__":
