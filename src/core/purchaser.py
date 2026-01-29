@@ -138,7 +138,7 @@ class WooCommercePurchaser():
 
                 # Check for error messages in response
                 response_lower = response.text.lower()
-                if response.status_code == 200 and not ('cannot add' in response_lower or 'out of stock' in response_lower or '缺貨' in response.text):
+                if response.status_code == 200 and 'you cannot add' not in response_lower:
                     return True
 
         if has_502_error:
