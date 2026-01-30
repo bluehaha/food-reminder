@@ -58,7 +58,7 @@ def main() -> None:
         webhook_url=str(config.slack.webhook_url),
         username=config.slack.username,
         icon_emoji=config.slack.icon_emoji,
-        env=config.env
+        enabled=config.slack.enabled,
     )
     state_store = JsonStateStore(config.state.file_path)
     purchaser = WooCommercePurchaser(
@@ -91,15 +91,16 @@ def main() -> None:
                 # Mark as purchased in state
                 state_store.set(str(config.product.product_id), 'fake-order-id')
                 break
-            else:
-                logger.info("Purchase process did not complete. Retrying in 30 seconds...")
-                time.sleep(30)
         except Purchase502Error as e:
             logger.error(f"Receive 502 Error during purchase: {e}. Retrying immediately...")
             slack_notifier.send_purchase_error(e, 'fail')
+            continue
         except Exception as e:
             logger.error(f"An unexpected error occurred: {e}. shutting down.")
             slack_notifier.send_purchase_error(e, 'fail')
+
+        logger.info("Purchase process did not complete. Retrying in 30 seconds...")
+        time.sleep(30)
 
 
 if __name__ == "__main__":

@@ -151,7 +151,7 @@ class WooCommercePurchaser():
 
     def _call_api_with_multi_threaded(self, flag: str, method: str, url: str, **kwargs) -> list[Response | None]:
         responses = []
-        urls = [url] * 5
+        urls = [url] * int(self._config.concurrent_requests)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_url = {

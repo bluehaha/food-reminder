@@ -19,7 +19,7 @@ class SlackNotifier():
         webhook_url: str,
         username: str = "Food Availability Bot",
         icon_emoji: str = ":bento:",
-        env: str | None = None
+        enabled: bool = True,
     ):
         """Initialize Slack notifier.
 
@@ -31,7 +31,7 @@ class SlackNotifier():
         self._webhook_url = webhook_url
         self._username = username
         self._icon_emoji = icon_emoji
-        self._env = env
+        self._enabled = enabled
 
     def _send(self, payload: Dict[str, Any]) -> None:
         """Send Slack notification.
@@ -42,7 +42,7 @@ class SlackNotifier():
         Raises:
             NotificationError: If notification fails
         """
-        if self._env in ['dev', 'develop', 'local']:
+        if not self._enabled:
             return
 
         try:

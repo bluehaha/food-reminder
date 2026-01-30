@@ -56,9 +56,11 @@ payment_info:
 timeout: 30
 user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:146.0) Gecko/20100101 Firefox/146.0"
 max_retries: 3
+concurrent_requests: 1
 
 # Slack notification settings
 slack:
+  enabled: true
   webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
   username: "Food Availability Bot"
   icon_emoji: ":bento:"

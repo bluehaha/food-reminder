@@ -29,6 +29,7 @@ class ProductConfig(BaseModel):
 class SlackConfig(BaseModel):
     """Slack notification configuration."""
 
+    enabled: bool = True
     webhook_url: HttpUrl
     username: str = "Food Availability Bot"
     icon_emoji: str = ":bento:"
@@ -125,7 +126,6 @@ class PaymentInfoConfig(BaseModel):
 class PurchaseConfig(BaseModel):
     """Purchase automation configuration."""
 
-    env: str = "prod"
     base_url: str
     product: PurchaseProductConfig
     billing_info: BillingInfoConfig
@@ -139,3 +139,4 @@ class PurchaseConfig(BaseModel):
         description="User agent for HTTP requests",
     )
     max_retries: int = Field(default=3, description="Max HTTP retries")
+    concurrent_requests: int = 5
