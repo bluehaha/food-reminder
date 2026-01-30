@@ -284,6 +284,11 @@ class WooCommercePurchaser():
             if match:
                 return match.group(1)
 
+        # save responses for debugging
+        for response in responses:
+            if response is not None:
+                self._logger.debug(f"Checkout page response for nonce extraction:\n{response.text}\n")
+
         return None
 
     def _extract_checkout_nonce(self, response_text: str) -> str | None:
