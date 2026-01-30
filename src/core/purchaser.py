@@ -287,7 +287,7 @@ class WooCommercePurchaser():
         # save responses for debugging
         for index, response in enumerate(responses):
             if response is not None:
-                with open(f"debug_checkout_response_{index}.html", "w", encoding="utf-8") as f:
+                with open(f"log/checkout_response_{index}.html", "w", encoding="utf-8") as f:
                     if response is not None:
                         f.write(response.text)
 
