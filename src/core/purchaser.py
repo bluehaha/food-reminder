@@ -126,7 +126,7 @@ class WooCommercePurchaser():
 
         self._logger.debug(f"Add to Cart Form data: {form_data}")
 
-        responses = self._call_api_with_multi_threaded('add_to_cart', 'POST', url, data=form_data)
+        responses = self._call_api_with_multi_threaded('add_to_cart', 'GET', url, data=form_data)
 
         has_502_error = False
 
@@ -285,9 +285,11 @@ class WooCommercePurchaser():
                 return match.group(1)
 
         # save responses for debugging
-        for response in responses:
+        for index, response in enumerate(responses):
             if response is not None:
-                self._logger.debug(f"Checkout page response for nonce extraction:\n{response.text}\n")
+                with open(f"debug_checkout_response_{index}.html", "w", encoding="utf-8") as f:
+                    if response is not None:
+                        f.write(response.text)
 
         return None
 

@@ -58,6 +58,7 @@ def main() -> None:
         webhook_url=str(config.slack.webhook_url),
         username=config.slack.username,
         icon_emoji=config.slack.icon_emoji,
+        env=config.env
     )
     state_store = JsonStateStore(config.state.file_path)
     purchaser = WooCommercePurchaser(

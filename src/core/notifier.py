@@ -15,7 +15,11 @@ class SlackNotifier():
     """Sends notifications via Slack webhook."""
 
     def __init__(
-        self, webhook_url: str, username: str = "Food Availability Bot", icon_emoji: str = ":bento:"
+        self,
+        webhook_url: str,
+        username: str = "Food Availability Bot",
+        icon_emoji: str = ":bento:",
+        env: str | None = None
     ):
         """Initialize Slack notifier.
 
@@ -27,6 +31,7 @@ class SlackNotifier():
         self._webhook_url = webhook_url
         self._username = username
         self._icon_emoji = icon_emoji
+        self._env = env
 
     def _send(self, payload: Dict[str, Any]) -> None:
         """Send Slack notification.
@@ -37,6 +42,9 @@ class SlackNotifier():
         Raises:
             NotificationError: If notification fails
         """
+        if self._env in ['dev', 'develop', 'local']:
+            return
+
         try:
             response = requests.post(self._webhook_url, json=payload, timeout=10)
             response.raise_for_status()

@@ -125,6 +125,7 @@ class PaymentInfoConfig(BaseModel):
 class PurchaseConfig(BaseModel):
     """Purchase automation configuration."""
 
+    env: str = "prod"
     base_url: str
     product: PurchaseProductConfig
     billing_info: BillingInfoConfig
