@@ -138,7 +138,10 @@ class WooCommercePurchaser():
 
                 # Check for error messages in response
                 response_lower = response.text.lower()
-                if response.status_code == 200 and 'you cannot add' not in response_lower:
+                bad_keywords = ['you cannot add', '已無庫存', '此商品已下架']
+                if response.status_code == 200 and not any(keyword in response_lower for keyword in bad_keywords):
+                    with open('log/add_to_cart_response.html', 'w', encoding='utf-8') as f:
+                        f.write(response.text)
                     return True
 
         if has_502_error:
